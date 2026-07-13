@@ -1133,23 +1133,18 @@ int main(int argc, char **argv) {
         ctx.count = 0;
         type_ctx.count = 0;
         global_bindings.count = 0;
-             fflush(stdout);
 
-        //Sleep(0.5);
+        fflush(stdout);
+
+        Sleep(0.5);
 
         printf("\x1b[H");
         printf("\x1b[2J");
-/*
-        printf("\n");
-        for (int i = 20; i >= 0; --i) printf("%c", dots[(i + frame/10) % 20]);
-        ++frame;
-        printf("\n");*/
-
 
         int value = _setjmp(env); 
         if (value == 0) {
             f = fopen(filename, "r+");
-            if (!f) goto end;
+            if (!f) continue;
             len = fread(lbuf, 1, sizeof(lbuf), f);
             fclose(f);
 
@@ -1172,11 +1167,8 @@ int main(int argc, char **argv) {
                 continue;
             }
            
-            v=infer(v);
-             t = term_types[v];
-
-          //      }
-         //   }
+            v = infer(v);
+            t = term_types[v];
 
             printf("\nFinished typechecking and evaluation.\n");
 
@@ -1191,9 +1183,7 @@ int main(int argc, char **argv) {
         QueryPerformanceCounter(&end_time);
         elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
 
-        //printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
-end:;
-
+        // printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
     }
 }
 
