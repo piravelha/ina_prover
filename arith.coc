@@ -14,7 +14,7 @@ refl =
     \h : P x.
     h;
 
-symm = 
+symm =
     \A : Type. 
     \x : A. 
     \y : A.
