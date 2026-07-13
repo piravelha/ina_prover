@@ -1,0 +1,359 @@
+
+let Unit : Type = (R : Type) -> R -> R in
+
+let unit : Unit = \R : Type. \x : R. x in
+
+let Eq : (A : Type) -> A -> A -> Type =
+    \A : Type. \x : A. \y : A. (P : A -> Type) -> P x -> P y 
+in
+
+let refl : (A : Type) -> (x : A) -> Eq A x x =
+    \A : Type. \x : A. \P : A -> Type. \h : P x. h 
+in
+
+let Bool : Type = (R : Type) -> R -> R -> R in
+
+let true : Bool = \R : Type. \x : R. \y : R. x in
+
+let false : Bool = \R : Type. \x : R. \y : R. y in
+
+axiom bool_ind : (P : Bool -> Type) -> P true -> P false -> (b : Bool) -> P b in
+
+let Void : Type = (R : Type) -> R in
+
+let Not : Type -> Type = \P : Type. P -> Void in
+
+let symm : (A : Type) -> (x : A) -> (y : A) -> Eq A x y -> Eq A y x =
+    \A : Type. \x : A. \y : A. \h : Eq A x y. h (\y : A. Eq A y x) (refl A x)
+in
+
+let trans : (A : Type) -> (x : A) -> (y : A) -> (z : A) -> Eq A x y -> Eq A y z -> Eq A x z =
+    \A : Type. \x : A. \y : A. \z : A. \h1 : Eq A x y. \h2 : Eq A y z.
+        h2 (\z : A. Eq A x z) h1
+in
+
+let absurd : (A : Type) -> (B : Type) -> A -> Not A -> B =
+    \A : Type. \B : Type. \a : A. \na : Not A. na a B
+in
+
+let absurd' : (A : Type) -> (B : Type) -> Not A -> A -> B =
+    \A : Type. \B : Type. \na : Not A. \a : A. na a B
+in
+
+let And : Type -> Type -> Type =
+    \A : Type. \B : Type. (R : Type) -> (A -> B -> R) -> R
+in
+
+let and_intro : (A : Type) -> (B : Type) -> A -> B -> And A B =
+    \A : Type. \B : Type. \x : A. \y : B. \R : Type. \f : A -> B -> R. f x y
+in
+
+let and_left : (A : Type) -> (B : Type) -> And A B -> A =
+    \A : Type. \B : Type. \h : And A B. h A (\x : A. \y : B. x)
+in
+
+let and_right : (A : Type) -> (B : Type) -> And A B -> B =
+    \A : Type. \B : Type. \h : And A B. h B (\x : A. \y : B. y)
+in
+
+let Or : Type -> Type -> Type =
+    \A : Type. \B : Type. (R : Type) -> (A -> R) -> (B -> R) -> R
+in
+
+let or_intro_left : (A : Type) -> (B : Type) -> A -> Or A B =
+    \A : Type. \B : Type. \x : A. \R : Type. \f : A -> R. \g : B -> R. f x
+in
+
+let or_intro_right : (A : Type) -> (B : Type) -> B -> Or A B =
+    \A : Type. \B : Type. \y : B. \R : Type. \f : A -> R. \g : B -> R. g y
+in
+
+let or_resolve_left : (A : Type) -> (B : Type) -> Or A B -> Not A -> B =
+    \A : Type. \B : Type. \h : Or A B. \na : Not A.
+        h B (absurd' A B na) (unit B)
+in
+
+let or_resolve_right : (A : Type) -> (B : Type) -> Or A B -> Not B -> A =
+    \A : Type. \B : Type. \h : Or A B. \nb : Not B.
+        h A (unit A) (absurd' B A nb)
+in
+
+let or_neg_resolve_left : (A : Type) -> (B : Type) -> Or (Not A) B -> A -> B =
+    \A : Type. \B : Type. \h : Or (Not A) B. \a : A.
+        h B (absurd A B a) (unit B)
+in
+
+let or_neg_resolve_right : (A : Type) -> (B : Type) -> Or A (Not B) -> B -> A =
+    \A : Type. \B : Type. \h : Or A (Not B). \b : B.
+        h A (unit A) (absurd B A b)
+in
+
+let Subtype : (A : Type) -> (A -> Type) -> Type =
+    \A : Type. \S : A -> Type. (R : Type) -> ((x : A) -> S x -> R) -> R
+in
+
+let subtype_val : (A : Type) -> (S : A -> Type) -> Subtype A S -> A =
+    \A : Type. \S : A -> Type. \x : Subtype A S. x A (\val : A. \p : S val. val)
+in
+
+let absurd_refl : (A : Type) -> (x : A) -> (B : Type) -> Not (Eq A x x) -> B =
+    \A : Type. \x : A. \B : Type. \h : Not (Eq A x x).
+        h (refl A x) B
+in
+
+let const_refl : (A : Type) -> (x : A) -> (B : Type) -> B -> Eq A x x =
+    \A : Type. \x : A. \B : Type. \y : B. refl A x
+in
+
+let eq_false_of_ne_true = bool_ind (\b : Bool. Not (Eq Bool b true) -> Eq Bool b false)
+    (absurd_refl Bool true (Eq Bool true false))
+    (const_refl Bool false (Not (Eq Bool false true)))
+in
+
+let eq_true_of_ne_false = bool_ind (\b : Bool. Not (Eq Bool b false) -> Eq Bool b true)
+    (const_refl Bool true (Not (Eq Bool true false)))
+    (absurd_refl Bool false (Eq Bool false true))
+in
+
+let true_ne_false : Not (Eq Bool true false) =
+    \h : Eq Bool true false.
+    h (\b : Bool. b Type Unit Void) unit
+in
+
+let false_ne_true : Not (Eq Bool false true) =
+    \h : Eq Bool false true.
+    h (\b : Bool. b Type Void Unit) unit
+in
+
+let ne_true_of_eq_false = bool_ind (\b : Bool. Eq Bool b false -> Not (Eq Bool b true))
+    (\h : Eq Bool true false. true_ne_false h (Not (Eq Bool true true)))
+    (\h : Eq Bool false false. false_ne_true)
+in
+
+let Inhabited : Type -> Type =
+    \A : Type. (R : Type) -> (A -> R) -> R
+in
+
+let inhabited_intro : (A : Type) -> A -> Inhabited A =
+    \A : Type. \x : A. \R : Type. \f : A -> R. f x
+in
+
+let get_inhabitant : (A : Type) -> Inhabited A -> A =
+    \A : Type. \i : Inhabited A. i A (unit A)
+in
+
+let type_is_inhabited : Inhabited Type =
+    inhabited_intro Type Unit
+in
+
+let unit_is_inhabited : Inhabited Unit =
+    inhabited_intro Unit unit
+in
+
+let bool_inhabited : Inhabited Bool =
+    inhabited_intro Bool true
+in
+
+let inhabited_fn : (A : Type) -> (B : Type) -> Inhabited B -> Inhabited (A -> B) =
+    \A : Type. \B : Type. \i : Inhabited B.
+        inhabited_intro (A -> B) (\x : A. get_inhabitant B i)
+in
+
+let inhabited_forall : (A : Type) -> (B : A -> Type) ->
+        ((x : A) -> Inhabited (B x)) -> Inhabited ((x : A) -> B x) =
+    \A : Type. \B : A -> Type. \f : (x : A) -> Inhabited (B x). 
+        inhabited_intro ((x : A) -> B x) (\x : A. get_inhabitant (B x) (f x))
+in
+
+let Decidable : Type -> Type = \A : Type. Or A (Not A) in
+
+let decidable_true : (A : Type) -> A -> Decidable A =
+    \A : Type. or_intro_left A (Not A)
+in
+
+let decidable_false : (A : Type) -> Not A -> Decidable A =
+    \A : Type. or_intro_right A (Not A)
+in
+
+let decide : (A : Type) -> Decidable A -> Bool =
+    \A : Type. \d : Decidable A. d Bool (\x : A. true) (\x : Not A. false)
+in
+
+let DecidablePrev : (A : Type) -> (A -> Type) -> Type =
+    \A : Type. \S : A -> Type. (x : A) -> Decidable (S x)
+in
+
+let DecidableRel : (A : Type) -> (B : Type) -> (A -> B -> Type) -> Type =
+    \A : Type. \B : Type. \S : A -> B -> Type. (x : A) -> (y : B) -> Decidable (S x y)
+in
+
+let DecidableEq : (A : Type) -> Type =
+    \A : Type. (x : A) -> (y : A) -> Decidable (Eq A x y)
+in
+
+axiom decidable_ind : (A : Type) -> (P : Decidable A -> Type) ->
+    ((x : A) -> P (decidable_true A x)) ->
+    ((x : Not A) -> P (decidable_false A x)) ->
+    (d : Decidable A) ->
+    P d
+in
+
+let decide_eq_true : (A : Type) -> (d : Decidable A) -> A -> Eq Bool (decide A d) true =
+    \A : Type. decidable_ind A (\d : Decidable A. A -> Eq Bool (decide A d) true)
+        (\x : A. \y : A. refl Bool true)
+        (\x : Not A. \y : A. x y (Eq Bool false true))
+in
+
+let decide_eq_false : (A : Type) -> (d : Decidable A) -> Not A -> Eq Bool (decide A d) false =
+    \A : Type. decidable_ind A (\d : Decidable A. Not A -> Eq Bool (decide A d) false)
+        (\x : A. \y : Not A. y x (Eq Bool true false))
+        (\x : Not A. \y : Not A. refl Bool false)
+in
+
+let of_decide_eq_true : (A : Type) -> (d : Decidable A) -> Eq Bool (decide A d) true -> A =
+    \A : Type. decidable_ind A (\d : Decidable A. Eq Bool (decide A d) true -> A)
+        (\x : A. \h : Eq Bool true true. x)
+        (\x : Not A. \h : Eq Bool false true. false_ne_true h A)
+in
+
+let of_decide_eq_false : (A : Type) -> (d : Decidable A) -> Eq Bool (decide A d) false -> Not A =
+    \A : Type. decidable_ind A (\d : Decidable A. Eq Bool (decide A d) false -> Not A)
+        (\x : A. \h : Eq Bool true false. true_ne_false h (Not A))
+        (\x : Not A. \h : Eq Bool false false. \y : A. x y)
+in
+
+let decidable_true_beq = \a : Bool. \b : Bool. decidable_true (Eq Bool a b) in
+let decidable_false_beq = \a : Bool. \b : Bool. decidable_false (Eq Bool a b) in
+
+let bool_dec_eq : DecidableEq Bool = 
+    bool_ind (\a : Bool. (b : Bool) -> Decidable (Eq Bool a b))
+
+        (bool_ind (\b : Bool. Decidable (Eq Bool true b))
+            (decidable_true_beq true true (refl Bool true))
+            (decidable_false_beq true false true_ne_false))
+
+        (bool_ind (\b : Bool. Decidable (Eq Bool false b))
+            (decidable_false_beq false true false_ne_true)
+            (decidable_true_beq false false (refl Bool false)))
+in
+
+let ite : (A : Type) -> (C : Type) -> Decidable C -> (t : A) -> (e : A) -> A =
+    \A : Type. \C : Type. \d : Decidable C. \t : A. \e : A.
+        d A (\x : C. t) (\x : Not C. e)
+in
+
+let not_and_intro_left : (A : Type) -> (B : Type) -> Not A -> Not (And A B) =
+    \A : Type. \B : Type. \na : Not A. \h : And A B.
+        h Void (\x : A. \y : B. na x)
+in
+
+let not_and_intro_right : (A : Type) -> (B : Type) -> Not B -> Not (And A B) =
+    \A : Type. \B : Type. \nb : Not B. \h : And A B.
+        h Void (\x : A. \y : B. nb y)
+in
+
+let not_or_intro : (A : Type) -> (B : Type) -> Not A -> Not B -> Not (Or A B) =
+    \A : Type. \B : Type. \na : Not A. \nb : Not B. \h : Or A B.
+        h Void na nb
+in
+
+let and_is_decidable : (A : Type) -> (B : Type) ->
+        Decidable A -> Decidable B -> Decidable (And A B) =
+    \A : Type. \B : Type. \da : Decidable A. \db : Decidable B.
+        da (Decidable (And A B))
+            (\x : A. db (Decidable (And A B))
+                (\y : B. decidable_true (And A B) (and_intro A B x y))
+                (\y : Not B. decidable_false (And A B) (not_and_intro_right A B y)))
+            (\x : Not A. decidable_false (And A B) (not_and_intro_left A B x))
+in
+
+let or_is_decidable : (A : Type) -> (B : Type) ->
+        Decidable A -> Decidable B -> Decidable (Or A B) =
+    \A : Type. \B : Type. \da : Decidable A. \db : Decidable B.
+        da (Decidable (Or A B))
+            (\x : A. decidable_true (Or A B) (or_intro_left A B x))
+            (\x : Not A. db (Decidable (Or A B))
+                (\y : B. decidable_true (Or A B) (or_intro_right A B y))
+                (\y : Not B. decidable_false (Or A B) (not_or_intro A B x y)))
+in
+
+let not_is_decidable : (A : Type) -> Decidable A -> Decidable (Not A) =
+    \A : Type. \da : Decidable A. da (Decidable (Not A))
+        (\x : A. decidable_false (Not A) (\h : Not A. h x))
+        (\x : Not A. decidable_true (Not A) x)
+in
+
+let dcond : (A : Type) -> (c : Bool) -> (Eq Bool c true -> A) -> (Eq Bool c false -> A) -> A =
+    \A : Type. bool_ind (\c : Bool. (Eq Bool c true -> A) -> (Eq Bool c false -> A) -> A)
+        (\f : Eq Bool true true -> A. \g : Eq Bool true false -> A. f (refl Bool true))
+        (\f : Eq Bool false true -> A. \g : Eq Bool false false -> A. g (refl Bool false))
+in
+
+let or : Bool -> Bool -> Bool =
+    \a : Bool. \b : Bool. a Bool true b
+in
+
+let and : Bool -> Bool -> Bool =
+    \a : Bool. \b : Bool. a Bool b false
+in
+
+let not : Bool -> Bool =
+    \a : Bool. a Bool false true
+in
+
+let Nat : Type =
+    (R : Type) -> R -> (R -> R) -> R
+in
+
+let zero : Nat =
+    \R : Type. \x : R. \f : R -> R. x
+in
+
+let succ : Nat -> Nat =
+    \n : Nat. \R : Type. \x : R. \f : R -> R. f (n R x f)
+in
+
+let one = succ zero in
+
+let nat_is_inhabited : Inhabited Nat =
+    inhabited_intro Nat zero
+in
+
+let nat_add : Nat -> Nat -> Nat =
+    \n : Nat. \m : Nat. m Nat n succ
+in
+
+let nat_mul : Nat -> Nat -> Nat =
+    \n : Nat. \m : Nat. m Nat zero (nat_add n)
+in
+
+let nat_pow : Nat -> Nat -> Nat =
+    \n : Nat. \m : Nat. m Nat one (nat_mul n)
+in
+
+axiom nat_ind : (P : Nat -> Type) -> P zero -> ((k : Nat) -> P k -> P (succ k)) -> 
+    (n : Nat) -> P n
+in
+
+let nat_beq : Nat -> Nat -> Bool =
+    nat_ind (\n : Nat. Nat -> Bool)
+        (nat_ind (\m : Nat. Bool)
+            true
+            (\m : Nat. \b : Bool. false))
+        (\n : Nat. \f : (m : Nat) -> Bool.
+            nat_ind (\m : Nat. Bool)
+                false
+                (\m : Nat. \b : Bool. f m))
+in
+
+axiom nat_eq_of_beq_eq_true : (n : Nat) -> (m : Nat) -> 
+    Eq Bool (nat_beq n m) true -> Eq Nat n m
+in
+
+axiom nat_ne_of_beq_eq_false : (n : Nat) -> (m : Nat) -> 
+    Eq Bool (nat_beq n m) false -> Not (Eq Nat n m)
+in
+
+unit
+
+
