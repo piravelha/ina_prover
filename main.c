@@ -32,15 +32,17 @@ typedef union {
 } Term;
 
 typedef enum {
-    UNIVERSE = 1,
-    NAME = 2,
-    ID = 4,
-    LAM = 16,
-    PI = 32,
-    LET = 256,
-    APP = 512,
-    AXIOM = 1024,
-    CHECK = 2048,
+    UNIVERSE,
+    NAME,
+    ID,
+    LAM,
+    IMPLICIT_LAM,
+    PI,
+    IMPLICIT_PI,
+    LET,
+    APP,
+    IMPLICIT_APP,
+    META_VAR,
 } Tag;
 
 #define MAX_TERMS (2 * 1024 * 1024)
@@ -59,7 +61,13 @@ void print_term(int id) {
 
     switch (tags[id]) {
     case UNIVERSE:
-        printf("*");
+        printf("Type");
+        return;
+
+    case META_VAR:
+        printf("?(%d : ", term.id);
+        print_term(term.type);
+        printf(")");
         return;
 
     case NAME:
@@ -70,9 +78,19 @@ void print_term(int id) {
         printf("%s", symbols[id]);
         return;
 
+    case IMPLICIT_PI:
+        printf("{%s: ", symbols[id]);
+        print_term(term.type);
+        printf("} -> ");
+        print_term(term.body);
+        return;
+
     case PI:
         if (isfree(term.param, term.body)) {
-            paren_func = tags[term.type] & (LAM | PI);
+            paren_func = 
+                tags[term.type] != ID && 
+                tags[term.type] != UNIVERSE && 
+                tags[term.type] != APP;
             if (paren_func) printf("(");
             print_term(term.type);
             if (paren_func) printf(")");
@@ -86,6 +104,13 @@ void print_term(int id) {
         }
         return;
 
+    case IMPLICIT_LAM:
+        printf("\\{%s: ", symbols[id]);
+        print_term(term.type);
+        printf("}. ");
+        print_term(term.body);
+        return;
+
     case LAM:
         printf("\\%s: ", symbols[id]);
         print_term(term.type);
@@ -94,8 +119,8 @@ void print_term(int id) {
         return;
    
     case APP:
-        paren_func = tags[term.func] & (LAM | PI);
-        paren_arg = tags[term.arg] & (LAM | PI | APP);
+        paren_func = tags[term.func] != ID && tags[term.func] != UNIVERSE && tags[term.func] != APP && tags[term.func] != IMPLICIT_APP;
+        paren_arg = tags[term.arg] != ID && tags[term.arg] != UNIVERSE;
 
         if (paren_func) printf("(");
         print_term(term.func);
@@ -106,6 +131,20 @@ void print_term(int id) {
         if (paren_arg) printf("(");
         print_term(term.arg);
         if (paren_arg) printf(")");
+        return;
+   
+    case IMPLICIT_APP:
+        paren_func = tags[term.func] != ID && tags[term.func] != UNIVERSE;
+
+        if (paren_func) printf("(");
+        print_term(term.func);
+        if (paren_func) printf(")");
+
+        printf(" ");
+
+        printf("{");
+        print_term(term.arg);
+        printf("}");
         return;
     }
 
@@ -133,11 +172,17 @@ int isfree(int name, int id) {
 
     case PI:
     case LAM:
+    case IMPLICIT_LAM:
+    case IMPLICIT_PI:
         if (name == terms[id].param) return 1;
         return isfree(name, terms[id].type) && isfree(name, terms[id].body);
 
+    case IMPLICIT_APP:
     case APP:
         return isfree(name, terms[id].func) && isfree(name, terms[id].arg);
+
+    case META_VAR:
+        return isfree(name, terms[id].type);
 
     case NAME:
     case UNIVERSE:
@@ -180,17 +225,20 @@ int unique_id(int base) {
     return p2;
 }
 
+static Ctx unifications;
+
 int evaluate(int id) {
     Term t = terms[id];
 
     switch (tags[id]) {
     case APP:
+    case IMPLICIT_APP:
         t.arg = evaluate(t.arg);
         t.func = evaluate(t.func);
 
         Term f = terms[t.func];
 
-        if (tags[t.func] == LAM) {
+        if (tags[t.func] == (tags[id] == APP ? LAM : IMPLICIT_LAM)) {
             push(&ctx, f.param, t.arg);
             f.body = evaluate(f.body);
             ctx.count--;
@@ -200,6 +248,8 @@ int evaluate(int id) {
  
         return alloc(id, tags[id], t);
 
+    case IMPLICIT_PI:
+    case IMPLICIT_LAM:
     case PI:
     case LAM:
         t.type = evaluate(t.type);
@@ -221,15 +271,6 @@ int evaluate(int id) {
         ctx.count--;
         return t.let.body;
 
-    case AXIOM:
-        push(&ctx, t.let.name, 0);
-        t.let.body = evaluate(t.let.body);
-        --ctx.count;
-        return t.let.body;
-        
-    case CHECK:
-        return evaluate(t.let.body);
-
     case ID: {
         int value = find(&ctx, t.id);
 
@@ -241,6 +282,14 @@ int evaluate(int id) {
 
         return id;
     }
+
+    case META_VAR:
+        int v = find(&unifications, t.id);
+        if (v) {
+            return evaluate(v);
+        }
+        t.type = evaluate(t.type);
+        return alloc(id, tags[id], t);
 
     case UNIVERSE:
     case NAME:
@@ -271,6 +320,48 @@ int eq(int a, int b) {
     b = eta_reduce(b);
     Term x = terms[a], y = terms[b];
 
+    if (tags[a] == META_VAR && tags[b] == META_VAR) {
+        if (x.id == y.id) return 1;
+
+        if (y.id > x.id) {
+            int c = b;
+            b = a;
+            a = c;
+
+            x = terms[a];
+            y = terms[b];
+        }
+
+        push(&unifications, x.id, b);
+        return 1;
+    }
+
+    if (tags[a] == META_VAR) {
+        for (int i = unifications.count-1; i >= 0; --i) {
+            if (unifications.names[i] == x.id) {
+                if (!eq(unifications.values[i], b)) return 0;
+                unifications.values[i] = evaluate(unifications.values[i]);
+                return 1;
+            }
+        }
+
+        push(&unifications, x.id, b);
+        return 1;
+    }
+
+    if (tags[b] == META_VAR) {
+        for (int i = unifications.count-1; i >= 0; --i) {
+            if (unifications.names[i] == y.id) {
+                if (!eq(a, unifications.values[i])) return 0;
+                unifications.values[i] = evaluate(unifications.values[i]);
+                return 1;
+            }
+        }
+
+        push(&unifications, y.id, a);
+        return 1;
+    }
+
     if (tags[a] != tags[b]) {
         goto fail;
     }
@@ -284,6 +375,8 @@ int eq(int a, int b) {
         if (x.id == y.id) return 1;
         goto fail;
 
+    case IMPLICIT_PI:
+    case IMPLICIT_LAM:
     case PI:
     case LAM:;
         if (!eq(x.type, y.type)) goto fail;
@@ -295,6 +388,7 @@ int eq(int a, int b) {
         if (!eq(x.body, y.body)) return 0;
         return 1;
    
+    case IMPLICIT_APP:
     case APP:
         if (!eq(x.func, y.func)) goto fail;
         if (!eq(x.arg, y.arg)) goto fail;
@@ -356,7 +450,7 @@ int recover_names(int id) {
 
 void print_formatted_term(int id)
 {
-    print_term(recover_names(id));
+    print_term((id));
 }
 
 void check_type_error(int ty, int value, int loc) {
@@ -413,10 +507,34 @@ void not_a_function_error(int fun, int arg, int loc)
     longjmp(env, 1);
 }
 
+int new_meta(int ty) {
+    static int meta_count = 0;
+    Term meta = {0};
+    meta.id = meta_count++;
+    meta.type = ty;
+
+    int me = alloc(-1, META_VAR, meta);
+    return me;
+}
+
+int collapse_implicit_pis(int id) {
+    while (tags[id] == IMPLICIT_PI) {
+        id = subst_id(terms[id].param, new_meta(terms[id].type), terms[id].body);
+    }
+
+    return id;
+}
+
 int infer(int id) {
     Term t = terms[id];
 
     switch (tags[id]) {
+    case META_VAR:
+        t.type = infer(t.type);
+        id = evaluate(alloc(id, tags[id], t));
+        term_types[id] = t.type;
+        return id;
+
     case NAME:
         undeclared_identifier_error(t.name, locations[id]);
        
@@ -432,6 +550,7 @@ int infer(int id) {
         term_types[id] = type;
         return id;
 
+    case IMPLICIT_LAM:
     case LAM: {
         t.type = infer(t.type);
 
@@ -447,15 +566,16 @@ int infer(int id) {
         type_ctx.count--;
         ctx.count--;
 
-        id = alloc(id, LAM, t);
+        id = alloc(id, tags[id], t);
 
         Term ty = terms[id];
         ty.body = term_types[t.body];
 
-        term_types[id] = alloc(id, PI, ty);
+        term_types[id] = alloc(id, tags[id] == LAM ? PI : IMPLICIT_PI, ty);
         return id;
     }
 
+    case IMPLICIT_PI:
     case PI: {
         t.type = infer(t.type);
 
@@ -467,7 +587,7 @@ int infer(int id) {
         type_ctx.count--;
         ctx.count--;
 
-        id = alloc(id, PI, t);
+        id = alloc(id, tags[id], t);
 
         int ty = alloc(id, UNIVERSE, t);
         term_types[id] = ty;
@@ -479,22 +599,48 @@ int infer(int id) {
         term_types[id] = id;
         return id;
 
+    case IMPLICIT_APP:
     case APP:
         int old_arg_location = locations[t.arg];
-        t.arg = infer(t.arg);
         t.func = infer(t.func);
+        t.arg = infer(t.arg);
 
-        if (tags[term_types[t.func]] != PI) {
+        int tf = term_types[t.func];
+
+        if (tags[id] == APP) {
+            while (tags[tf] == IMPLICIT_PI) {
+                int me = new_meta(terms[tf].type);
+
+                Term ap = {0};
+                ap.func = t.func;
+                ap.arg = me;
+
+                t.func = alloc(t.func, IMPLICIT_APP, ap);
+                t.func = infer(t.func);
+                tf = term_types[t.func];
+            }
+        }
+
+        if (tags[tf] != (tags[id] == APP ? PI : IMPLICIT_PI)) {
             not_a_function_error(t.func, t.arg, old_arg_location);
         }
+        Term f = terms[tf];
 
-        Term f = terms[term_types[t.func]];
+        int new_arg = term_types[t.arg];
+        int new_type = f.type;
 
-        if (!eq(term_types[t.arg], f.type)) {
-            type_error(f.type, t.arg, locations[t.arg]);
+        if (tags[id] == APP) {
+            new_arg = collapse_implicit_pis(new_arg);
+            new_type = collapse_implicit_pis(new_type);
         }
 
-        push(&type_ctx, f.param, f.type);
+        if (!eq(new_arg, new_type)) {
+            type_error(new_type, t.arg, locations[t.arg]);
+        }
+
+        new_type = evaluate(new_type);
+
+        push(&type_ctx, f.param, new_type);
         push(&ctx, f.param, t.arg);
 
         f.body = evaluate(f.body);
@@ -508,16 +654,26 @@ int infer(int id) {
         return id;
 
     case LET:;
-        if (t.let.type)
+        if (t.let.type) {
             t.let.type = infer(t.let.type);
-        t.let.value = infer(t.let.value);
+        }
 
-        if (t.let.type && !eq(t.let.type, term_types[t.let.value])) {
-            let_type_error(t.let.type, t.let.value, locations[t.let.value]);
+        t.let.value = infer(t.let.value);
+        int new_value = term_types[t.let.value];
+
+        if (t.let.type) {
+            new_value = collapse_implicit_pis(new_value);
+            int new_type = collapse_implicit_pis(t.let.type);
+
+            if (!eq(new_type, new_value)) {
+                let_type_error(t.let.type, t.let.value, locations[t.let.value]);
+            }
+
+            new_value = evaluate(new_type);
         }
 
         push(&ctx, t.let.name, t.let.value);
-        push(&type_ctx, t.let.name, term_types[t.let.value]);
+        push(&type_ctx, t.let.name, new_value);
         push(&global_bindings, id, t.let.value);
 
         t.let.body = infer(t.let.body);
@@ -529,32 +685,6 @@ int infer(int id) {
 
         term_types[id] = term_types[t.let.body];
         return id;
-
-    case AXIOM:
-        t.let.type = infer(t.let.type);
-
-        push(&ctx, t.let.name, 0);
-        push(&type_ctx, t.let.name, t.let.type);
-
-        t.let.body = infer(t.let.body);
-
-        type_ctx.count--;
-        ctx.count--;
-
-        id = evaluate(alloc(id, AXIOM, t));
-
-        term_types[id] = term_types[t.let.body];
-        return id;
-
-    case CHECK:
-        t.let.type = infer(t.let.type);
-        t.let.value = infer(t.let.value);
-
-        if (!eq(t.let.type, term_types[t.let.value])) {
-            check_type_error(t.let.type, t.let.value, locations[t.let.value]);
-        }
-
-        return infer(t.let.body);
     }
 }
 
@@ -573,6 +703,12 @@ int subst_id(int name, int var, int id) {
     case NAME:
         return id;
 
+    case META_VAR:
+        t.type = subst_id(name, var, t.type);
+        break;
+
+    case IMPLICIT_PI:
+    case IMPLICIT_LAM:
     case PI:
     case LAM:
         if (t.type) t.type = subst_id(name, var, t.type);
@@ -580,6 +716,7 @@ int subst_id(int name, int var, int id) {
         t.body = subst_id(name, var, t.body);
         break;
 
+    case IMPLICIT_APP:
     case APP:
         t.func = subst_id(name, var, t.func);
         t.arg = subst_id(name, var, t.arg);
@@ -588,17 +725,6 @@ int subst_id(int name, int var, int id) {
     case LET:
         if (t.let.type)
             t.let.type = subst_id(name, var, t.let.type);
-        t.let.value = subst_id(name, var, t.let.value);
-        t.let.body = subst_id(name, var, t.let.body);
-        break;
-
-    case AXIOM:
-        t.let.type = subst_id(name, var, t.let.type);
-        t.let.body = subst_id(name, var, t.let.body);
-        break;
-
-    case CHECK:
-        t.let.type = subst_id(name, var, t.let.type);
         t.let.value = subst_id(name, var, t.let.value);
         t.let.body = subst_id(name, var, t.let.body);
         break;
@@ -693,7 +819,7 @@ int parse_name(void) {
     t.name = parse_ident();
     if (!t.name) return 0;
 
-    if (!strcmp(t.name, "*")) {
+    if (!strcmp(t.name, "Type")) {
         int id = alloc(-1, UNIVERSE, t);
         locations[id] = p;
         return id;
@@ -721,6 +847,12 @@ int subst_name(const char *name, int var, int id) {
     case ID:
         return id;
 
+    case META_VAR:
+        t.type = subst_name(name, var, t.type);
+        break;
+
+    case IMPLICIT_PI:
+    case IMPLICIT_LAM:
     case PI:
     case LAM:
         if (t.type) t.type = subst_name(name, var, t.type);
@@ -728,6 +860,7 @@ int subst_name(const char *name, int var, int id) {
         t.body = subst_name(name, var, t.body);
         break;
 
+    case IMPLICIT_APP:
     case APP:
         t.func = subst_name(name, var, t.func);
         t.arg = subst_name(name, var, t.arg);
@@ -736,17 +869,6 @@ int subst_name(const char *name, int var, int id) {
     case LET:
         if (t.let.type)
             t.let.type = subst_name(name, var, t.let.type);
-        t.let.value = subst_name(name, var, t.let.value);
-        t.let.body = subst_name(name, var, t.let.body);
-        break;
-
-    case AXIOM:
-        t.let.type = subst_name(name, var, t.let.type);
-        t.let.body = subst_name(name, var, t.let.body);
-        break;
-
-    case CHECK:
-        t.let.type = subst_name(name, var, t.let.type);
         t.let.value = subst_name(name, var, t.let.value);
         t.let.body = subst_name(name, var, t.let.body);
         break;
@@ -795,7 +917,8 @@ int parse_pi(void) {
     int p = pos;
     Term t = {0};
 
-    if (!parse_str("(")) return 0;
+    int curly = parse_str("{");
+    if (!curly && !parse_str("(")) return 0;
 
     const char *param_name = parse_ident();
     if (!param_name) {
@@ -807,7 +930,7 @@ int parse_pi(void) {
     t.type = parse_term();
     assert(t.type);
 
-    if (!parse_str(")")) return 0;
+    if (!parse_str(curly ? "}" : ")")) return 0;
 
     if (!parse_str("->")) {
         print_loc(pos);
@@ -819,7 +942,7 @@ int parse_pi(void) {
     assert(t.body);
 
     integerize(param_name, &t.body, &t.param);
-    int id = alloc(-1, PI, t);
+    int id = alloc(-1, curly ? IMPLICIT_PI : PI, t);
     symbols[id] = param_name;
     locations[id] = p;
     return id;
@@ -830,6 +953,8 @@ int parse_lam(void) {
     Term t = {0};
 
     if (!parse_str("\\")) return 0;
+
+    int curly = parse_str("{");
 
     const char *param = parse_ident();
     if (!param) {
@@ -847,6 +972,11 @@ int parse_lam(void) {
     t.type = parse_term();
     assert(t.type);
 
+    if (curly && !parse_str("}")) {
+        printf("TODO: not implemented");
+        longjmp(env, 1);
+    }
+
     if (!parse_str(".")) {
         print_loc(pos);
         printf("Failed to parse, lambdas use a '.' after the parameter type to delimit the body\n");
@@ -857,7 +987,7 @@ int parse_lam(void) {
     assert(t.body);
 
     integerize(param, &t.body, &t.param);
-    int id = alloc(-1, LAM, t);
+    int id = alloc(-1, curly ? IMPLICIT_LAM : LAM, t);
     symbols[id] = param;
     locations[id] = p;
 
@@ -928,99 +1058,6 @@ int parse_let(void) {
     return id;
 }
 
-int parse_check(void) {
-    int p = pos;
-
-    if (!parse_str("#check")) {
-        return 0;
-    }
-
-    int value = parse_term();
-    assert(value);
-
-    if (!parse_str(":")) {
-        print_loc(pos);
-        printf("Failed to parse the check statement, expected a ':' after the value\n");
-        longjmp(env, 1);
-    }
-
-    int type = parse_term();
-    assert(type);
-
-    if (!parse_str(";")) {
-        print_loc(pos);
-        printf("Failed to parse the end of the check statement, expected a ';' after the type\n");
-        longjmp(env, 1);
-    }
-
-    int body = parse_term();
-    assert(body);
-
-    Term t = {0};
-    t.let.type = type;
-    t.let.value = value;
-    t.let.body = body;
-
-    int id = alloc(-1, CHECK, t);
-
-    locations[id] = p;
-
-    return id;
-}
-
-int parse_axiom(void) {
-    int p = pos;
-
-    if (!parse_str("#axiom")) {
-        return 0;
-    }
-
-    const char *param_name = parse_ident();
-    if (!param_name) {
-        print_loc(pos);
-        printf("Failed to parse the axiom declaration since its name is missing\n");
-        longjmp(env, 1);
-    }
-
-    if (!parse_str(":")) {
-        print_loc(pos);
-        printf("Failed to parse the axiom declaration, the type must be specified after a ':'\n");
-        longjmp(env, 1);
-    }
-
-    int type = parse_term();
-    assert(type);
-
-    if (!parse_str(";")) {
-        print_loc(pos);
-        printf("Failed to parse the end of the axiom declaration, expected a ';' as the final delimiter\n");
-        longjmp(env, 1);
-    }
-
-    parse_ws();
-    if (!input[pos]) {
-        print_loc(pos);
-        printf("Failed to parse program, missing final expression at the end of declarations\n");
-        longjmp(env, 1);
-    }
-
-    int body = parse_term();
-    assert(body);
-
-    Term t = {0};
-    integerize(param_name, &body, &t.let.name);
-
-    t.let.type = type;
-    t.let.body = body;
-
-    int id = alloc(-1, AXIOM, t);
-
-    symbols[id] = param_name;
-    locations[id] = p;
-
-    return id;
-}
-
 int parse_apps(void) {
     int p = pos;
     Term t = {0};
@@ -1035,8 +1072,16 @@ int parse_apps(void) {
 
         int p2 = pos;
 
-        t.arg = parse_atom();
-        if (!t.arg) break;
+        int curly = parse_str("{");
+        if (curly) {
+            tag = IMPLICIT_APP;
+            t.arg = parse_term();
+            if (!t.arg) return 0;
+            if (!parse_str("}")) return 0;
+        } else {
+            t.arg = parse_atom();
+            if (!t.arg) break;
+        }
 
         t.func = alloc(-1, tag, t);
         locations[t.func] = p;
@@ -1071,14 +1116,6 @@ int parse_term(void) {
     pos = old_pos;
 
     id = parse_lam();
-    if (id) return id;
-    pos = old_pos;
-
-    id = parse_axiom();
-    if (id) return id;
-    pos = old_pos;
-
-    id = parse_check();
     if (id) return id;
     pos = old_pos;
 
@@ -1119,86 +1156,72 @@ int main(int argc, char **argv) {
     symbols = malloc(sizeof(*symbols) * MAX_TERMS);
 
     static char outbuf[1024*1024];
-    /*if (setvbuf(stdout, outbuf, _IOFBF, 1024*1024) != 0) {
-        return 1;
-    }*/
     char *filename=argv[1];
         
-    //printf("\x1b[?25l");
-
     int frame = 0;
 
     char lbuf[16*2048];
     int len = 0;
 
     int v,t;
-    char dots[20];
-    memset(dots, ' ', 20);
-    for (int i = 0; i < 4; ++i) dots[i] = '~';
 
-#define continue return 1
-    //while (1) {
-        LARGE_INTEGER freq, begin_time, end_time;
-        double elapsed_time;
+
+
+    LARGE_INTEGER freq, begin_time, end_time;
+    double elapsed_time;
+    
+    terms_count = 1;
+    names_len = 0;
+    names[0] = 0;
+    ctx.count = 0;
+    type_ctx.count = 0;
+    global_bindings.count = 0;
+
         QueryPerformanceFrequency(&freq);
         QueryPerformanceCounter(&begin_time);
 
-        terms_count = 1;
-        names_len = 0;
-        names[0] = 0;
-        ctx.count = 0;
-        type_ctx.count = 0;
-        global_bindings.count = 0;
+    int value = _setjmp(env); 
+    if (value == 0) {
+        f = fopen(filename, "r+");
+        if (!f) return 1;
+        len = fread(lbuf, 1, sizeof(lbuf), f);
+        fclose(f);
 
-        fflush(stdout);
-        //Sleep(100);
+        lbuf[len]=0;
 
-        //printf("\x1b[H");
-        //printf("\x1b[2J");
+        input = lbuf;
+        pos = 0;
+        parse_ws();
 
-        int value = _setjmp(env); 
-        if (value == 0) {
-            f = fopen(filename, "r+");
-            if (!f) continue;
-            len = fread(lbuf, 1, sizeof(lbuf), f);
-            fclose(f);
+        v = parse_term();
 
-            lbuf[len]=0;
-
-            input = lbuf;
-            pos = 0;
-            parse_ws();
-
-            v = parse_term();
-
-            if (!v) {
-                printf("Failed to parse contents\n");
-                continue;
-            }
-
-            parse_ws();
-            if (input[pos]) {
-                printf("Leftover input\n");
-                continue;
-            }
-           
-            v = infer(v);
-            t = term_types[v];
-
-            printf("\nFinished typechecking and evaluation.\n");
-
-            printf("\n");
-            printf("Resulting term: ");
-            print_term(v);
-            printf("\nwhich has type: ");
-            print_term(t);
-            printf("\n");
+        if (!v) {
+            printf("Failed to parse contents\n");
+            return 1;
         }
 
-        QueryPerformanceCounter(&end_time);
-        elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
+        parse_ws();
+        if (input[pos]) {
+            printf("Leftover input\n");
+            return 1;
+        }
+      
+        v = infer(v);
+        t = term_types[v];
 
-        // printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
-    //}
+        printf("\nFinished typechecking and evaluation.\n");
+
+        printf("\n");
+        printf("Resulting term: ");
+        print_term(v);
+        printf("\nwhich has type: ");
+        print_term(t);
+        printf("\n");
+    }
+
+        QueryPerformanceCounter(&end_time);
+    elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
+
+    printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
 }
 

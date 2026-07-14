@@ -1,0 +1,12 @@
+
+
+Eq = \{A : Type}. \x : A. \y : A. (P : A -> Type) -> P x -> P y;
+
+refl = \{A : Type}. \{x : A}. \P : A -> Type. \h : P x. h;
+
+EqInd = \{A : Type}. \{x : A}. \{y : A}. \h : Eq x y. (P : {y : A} -> Eq x y -> Type) -> P refl -> P h;
+
+refl_ind : EqInd refl;
+refl_ind = \{A : Type}. \{x : A}. \P : {y : A} -> Eq x y -> Type. \h : P refl. h;
+
+refl_ind

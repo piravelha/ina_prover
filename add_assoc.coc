@@ -1,0 +1,94 @@
+
+Nat : Type;
+Nat = (R: Type) -> R -> (R -> R) -> R;
+
+Nat.zero : Nat;
+Nat.zero = \R: Type. \x: R. \f: R -> R. x;
+
+Nat.succ : Nat -> Nat;
+Nat.succ = \n: Nat. \R: Type. \x: R. \f: R -> R. f (n R x f);
+
+Nat.Ind : Nat -> Type;
+Nat.Ind = \n: Nat.
+    (P: Nat -> Type) ->
+    P Nat.zero ->
+    ((k: Nat) -> P k -> P (Nat.succ k)) ->
+    P n;
+
+Nat.add : Nat -> Nat -> Nat;
+Nat.add =
+    \n: Nat. 
+    \m: Nat.
+    m Nat n Nat.succ;
+
+Eq : (A: Type) -> A -> A -> Type;
+Eq = \A: Type. \x: A. \y: A.
+    (P: A -> Type) -> P x -> P y;
+
+Eq.refl : (A: Type) -> (x: A) -> Eq A x x;
+Eq.refl = \A: Type. \x: A.
+    \P: A -> Type. \h: P x. h;
+
+Nat.add_zero : (n: Nat) -> Nat.Ind n -> Eq Nat (Nat.add Nat.zero n) n;
+Nat.add_zero = \n: Nat. \i: Nat.Ind n.
+    i (\n: Nat. Eq Nat (Nat.add Nat.zero n) n)
+        (
+            Goal = Eq Nat (Nat.add Nat.zero Nat.zero) Nat.zero;
+
+            h1 : Goal;
+            h1 = Eq.refl Nat Nat.zero;
+
+            h1
+        )
+        (\n: Nat. \h: Eq Nat (Nat.add Nat.zero n) n.
+
+            Goal = Eq Nat (Nat.add Nat.zero (Nat.succ n)) (Nat.succ n);
+
+            h1 : Eq Nat (Nat.succ (Nat.add Nat.zero n)) (Nat.succ (Nat.add Nat.zero n));
+            h1 = Eq.refl Nat (Nat.succ (Nat.add Nat.zero n));
+
+            h2 : Eq Nat (Nat.succ (Nat.add Nat.zero n)) (Nat.succ n);
+            h2 = h (\x: Nat. Eq Nat (Nat.succ (Nat.add Nat.zero n)) (Nat.succ x)) h1;
+
+            h3 : Eq Nat (Nat.succ (Nat.add Nat.zero n)) (Nat.add Nat.zero (Nat.succ n));
+            h3 = Eq.refl Nat (Nat.succ (Nat.add Nat.zero n)); // true by computation
+
+            h_final : Eq Nat (Nat.succ (Nat.add Nat.zero n)) (Nat.succ n);
+            h_final = h3 (\x: Nat. Eq Nat x (Nat.succ n)) h2;
+
+            h_final
+        );
+    
+
+Nat.succ_lemma : (n: Nat) -> (m: Nat) -> Nat.Ind m -> Eq Nat (Nat.add (Nat.succ n) m) (Nat.succ (Nat.add n m)); 
+Nat.succ_lemma =
+    \n: Nat.
+    \m: Nat.
+    \i: Nat.Ind m.
+    i (\m: Nat. Eq Nat (Nat.add (Nat.succ n) m) (Nat.succ (Nat.add n m)))
+        (Eq.refl Nat (Nat.succ n))
+        (\m: Nat. \h: Eq Nat (Nat.add (Nat.succ n) m) (Nat.succ (Nat.add n m)).
+            h (\x: Nat. Eq Nat (Nat.add (Nat.succ n) (Nat.succ m)) (Nat.succ x)) (Eq.refl Nat (Nat.add (Nat.succ n) (Nat.succ m))));
+
+Nat.add_comm : (n: Nat) -> Nat.Ind n -> (m: Nat) -> Nat.Ind m -> Eq Nat (Nat.add n m) (Nat.add m n);
+Nat.add_comm =
+    \n: Nat.
+    \i: Nat.Ind n.
+
+    i (\n: Nat. (m: Nat) -> Nat.Ind m -> Eq Nat (Nat.add n m) (Nat.add m n))
+        (\m: Nat. \i: Nat.Ind m. Nat.add_zero m i)
+        (\n: Nat. \h: (m: Nat) -> Nat.Ind m -> Eq Nat (Nat.add n m) (Nat.add m n). 
+            \m: Nat. \i: Nat.Ind m.
+                h m i (\x: Nat. Eq Nat (Nat.add (Nat.succ n) m) (Nat.succ x)) (Nat.succ_lemma n m i));
+
+/*
+Nat.add_assoc : (a: Nat) -> Nat.Ind a -> (b: Nat) -> (c: Nat) ->
+    Eq Nat (Nat.add (Nat.add a b) c) (Nat.add a (Nat.add b c));
+
+Nat.add_assoc = \a: Nat. \i: Nat.Ind a. i (\a: Nat. (b: Nat) -> (c: Nat) ->
+    Eq Nat (Nat.add (Nat.add a b) c) (Nat.add a (Nat.add b c)))
+
+    (\b: Nat. \c: Nat.
+        Nat.zero_add 
+    );
+*/
