@@ -507,8 +507,9 @@ void not_a_function_error(int fun, int arg, int loc)
     longjmp(env, 1);
 }
 
+static int meta_count = 0;
+
 int new_meta(int ty) {
-    static int meta_count = 0;
     Term meta = {0};
     meta.id = meta_count++;
     meta.type = ty;
@@ -1165,63 +1166,76 @@ int main(int argc, char **argv) {
 
     int v,t;
 
+    if (setvbuf(stdout, outbuf, _IOFBF, 1024*1024) != 0) {
+        return 1;
+    }
 
+    printf("\x1b[?25l");
 
-    LARGE_INTEGER freq, begin_time, end_time;
-    double elapsed_time;
-    
-    terms_count = 1;
-    names_len = 0;
-    names[0] = 0;
-    ctx.count = 0;
-    type_ctx.count = 0;
-    global_bindings.count = 0;
+    while (1) {
+        LARGE_INTEGER freq, begin_time, end_time;
+        double elapsed_time;
+        
+        terms_count = 1;
+        unique = 0;
+        meta_count = 0;
+        names_len = 0;
+        names[0] = 0;
+        ctx.count = 0;
+        type_ctx.count = 0;
+        global_bindings.count = 0;
+        unifications.count = 0;
 
         QueryPerformanceFrequency(&freq);
         QueryPerformanceCounter(&begin_time);
 
-    int value = _setjmp(env); 
-    if (value == 0) {
-        f = fopen(filename, "r+");
-        if (!f) return 1;
-        len = fread(lbuf, 1, sizeof(lbuf), f);
-        fclose(f);
+        Sleep(20);
 
-        lbuf[len]=0;
+        fflush(stdout);
+        printf("\x1b[H");
+        printf("\x1b[2J");
+        int value = _setjmp(env); 
+        if (value == 0) {
+            f = fopen(filename, "r+");
+            if (!f) continue;
+            len = fread(lbuf, 1, sizeof(lbuf), f);
+            fclose(f);
 
-        input = lbuf;
-        pos = 0;
-        parse_ws();
+            lbuf[len]=0;
 
-        v = parse_term();
+            input = lbuf;
+            pos = 0;
+            parse_ws();
 
-        if (!v) {
-            printf("Failed to parse contents\n");
-            return 1;
+            v = parse_term();
+
+            if (!v) {
+                printf("Failed to parse contents\n");
+                continue;
+            }
+
+            parse_ws();
+            if (input[pos]) {
+                printf("Leftover input\n");
+                continue;
+            }
+          
+            v = infer(v);
+            t = term_types[v];
+
+            printf("\nFinished typechecking and evaluation.\n");
+
+            printf("\n");
+            printf("Resulting term: ");
+            print_term(v);
+            printf("\nwhich has type: ");
+            print_term(t);
+            printf("\n");
         }
-
-        parse_ws();
-        if (input[pos]) {
-            printf("Leftover input\n");
-            return 1;
-        }
-      
-        v = infer(v);
-        t = term_types[v];
-
-        printf("\nFinished typechecking and evaluation.\n");
-
-        printf("\n");
-        printf("Resulting term: ");
-        print_term(v);
-        printf("\nwhich has type: ");
-        print_term(t);
-        printf("\n");
-    }
 
         QueryPerformanceCounter(&end_time);
-    elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
-
-    printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
+        elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
+        //printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
+    }
 }
 

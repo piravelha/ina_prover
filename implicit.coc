@@ -1,12 +1,23 @@
 
 
-Eq = \{A : Type}. \x : A. \y : A. (P : A -> Type) -> P x -> P y;
+\Eq : {A : Type} -> A -> A -> Type.
 
-refl = \{A : Type}. \{x : A}. \P : A -> Type. \h : P x. h;
+\refl : {A : Type} -> {x : A} -> Eq x x.
 
-EqInd = \{A : Type}. \{x : A}. \{y : A}. \h : Eq x y. (P : {y : A} -> Eq x y -> Type) -> P refl -> P h;
+\ind : {A : Type} -> {x : A} -> {y : A} -> (P : {y : A} -> Eq x y -> Type) -> P refl -> {y : A} -> (h : Eq x y) -> P h.
 
-refl_ind : EqInd refl;
-refl_ind = \{A : Type}. \{x : A}. \P : {y : A} -> Eq x y -> Type. \h : P refl. h;
+subst : {A : Type} -> {x : A} -> {y : A} -> Eq x y -> (P : A -> Type) -> P x -> P y;
+subst = \{A : Type}. \{x : A}. \{y : A}. \h : Eq x y. \P : A -> Type. \b : P x. ind (\{y : A}. \h : Eq x y. P y) b h;
 
-refl_ind
+trans : {A : Type} -> {x : A} -> {y : A} -> {z : A} -> Eq x y -> Eq y z -> Eq x z;
+trans = \{A : Type}. \{x : A}. \{y : A}. \{z : A}. \h1 : Eq x y. \h2 : Eq y z. subst h2 (Eq x) h1;
+
+\Nat : Type.
+\zero : Nat.
+\one : Nat.
+\two : Nat.
+
+\h1 : Eq zero one.
+\h2 : Eq one two.
+
+trans h1 h2
