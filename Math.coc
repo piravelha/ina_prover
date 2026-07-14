@@ -1,29 +1,4 @@
 
-
-
-
-
-
-
-
-refl =
-    \R: Type.
-    \x: R.
-    \P: R -> Type.
-    \h: P x.
-    h;
-
-unit =
-    \R: Type.
-    \x: R.
-    x;
-
-neg_one =
-    \R: Type.
-    \f: R -> R.
-    \x: R.
-    \y: R.
-    \h: (P: R -> Type) -> P (f y) -> P x.
-    y;
-
-
+\R: Type.
+\x: R.
+\

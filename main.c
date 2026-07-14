@@ -59,7 +59,7 @@ void print_term(int id) {
 
     switch (tags[id]) {
     case UNIVERSE:
-        printf("Type");
+        printf("*");
         return;
 
     case NAME:
@@ -79,7 +79,7 @@ void print_term(int id) {
             printf(" -> ");
             print_term(term.body);
         } else {
-            printf("(%s : ", symbols[id]);
+            printf("(%s: ", symbols[id]);
             print_term(term.type);
             printf(") -> ");
             print_term(term.body);
@@ -87,7 +87,7 @@ void print_term(int id) {
         return;
 
     case LAM:
-        printf("\\%s : ", symbols[id]);
+        printf("\\%s: ", symbols[id]);
         print_term(term.type);
         printf(". ");
         print_term(term.body);
@@ -134,12 +134,13 @@ int isfree(int name, int id) {
     case PI:
     case LAM:
         if (name == terms[id].param) return 1;
-        return isfree(name, terms[id].body);
+        return isfree(name, terms[id].type) && isfree(name, terms[id].body);
 
     case APP:
         return isfree(name, terms[id].func) && isfree(name, terms[id].arg);
 
     case NAME:
+    case UNIVERSE:
         return 1;
     }
 }
@@ -692,7 +693,7 @@ int parse_name(void) {
     t.name = parse_ident();
     if (!t.name) return 0;
 
-    if (!strcmp(t.name, "Type")) {
+    if (!strcmp(t.name, "*")) {
         int id = alloc(-1, UNIVERSE, t);
         locations[id] = p;
         return id;
