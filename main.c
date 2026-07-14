@@ -105,9 +105,9 @@ void print_term(int id) {
         return;
 
     case IMPLICIT_LAM:
-        printf("\\{%s: ", symbols[id]);
+        printf("\\%s: ", symbols[id]);
         print_term(term.type);
-        printf("}. ");
+        printf("}! ");
         print_term(term.body);
         return;
 
@@ -237,7 +237,7 @@ int evaluate(int id) {
         t.func = evaluate(t.func);
 
         Term f = terms[t.func];
-
+        
         if (tags[t.func] == (tags[id] == APP ? LAM : IMPLICIT_LAM)) {
             push(&ctx, f.param, t.arg);
             f.body = evaluate(f.body);
@@ -323,7 +323,7 @@ int eq(int a, int b) {
     if (tags[a] == META_VAR && tags[b] == META_VAR) {
         if (x.id == y.id) return 1;
 
-        if (y.id > x.id) {
+        if (y.id < x.id) {
             int c = b;
             b = a;
             a = c;
@@ -339,7 +339,7 @@ int eq(int a, int b) {
     if (tags[a] == META_VAR) {
         for (int i = unifications.count-1; i >= 0; --i) {
             if (unifications.names[i] == x.id) {
-                if (!eq(unifications.values[i], b)) return 0;
+                if (!eq(unifications.values[i], b)) assert(0);
                 unifications.values[i] = evaluate(unifications.values[i]);
                 return 1;
             }
@@ -478,7 +478,7 @@ void let_type_error(int ty, int value, int loc) {
 void type_error(int fun, int arg, int loc) {
     print_loc(loc);
     printf("Trying to apply argument of type\n  ");
-    print_formatted_term(term_types[arg]);
+    print_formatted_term(arg);
     printf("\nto a function that expected a\n  ");
     print_formatted_term(fun);
     printf("\n");
@@ -635,8 +635,10 @@ int infer(int id) {
             new_type = collapse_implicit_pis(new_type);
         }
 
+        new_type = infer(new_type);
+
         if (!eq(new_arg, new_type)) {
-            type_error(new_type, t.arg, locations[t.arg]);
+            type_error(new_type, new_arg, locations[t.arg]);
         }
 
         new_type = evaluate(new_type);
@@ -666,11 +668,13 @@ int infer(int id) {
             new_value = collapse_implicit_pis(new_value);
             int new_type = collapse_implicit_pis(t.let.type);
 
+            new_value = infer(new_value);
+
             if (!eq(new_type, new_value)) {
                 let_type_error(t.let.type, t.let.value, locations[t.let.value]);
             }
 
-            new_value = evaluate(new_type);
+            new_value = (t.let.type);
         }
 
         push(&ctx, t.let.name, t.let.value);
@@ -750,6 +754,7 @@ const char *parse_ident(void) {
             input[pos] != '(' &&
             input[pos] != ')' &&
             input[pos] != ';' &&
+            input[pos] != '!' &&
             input[pos] != ',' &&
             input[pos] != '\\' &&
             input[pos] != '%' &&
@@ -955,8 +960,6 @@ int parse_lam(void) {
 
     if (!parse_str("\\")) return 0;
 
-    int curly = parse_str("{");
-
     const char *param = parse_ident();
     if (!param) {
         print_loc(pos);
@@ -973,12 +976,8 @@ int parse_lam(void) {
     t.type = parse_term();
     assert(t.type);
 
-    if (curly && !parse_str("}")) {
-        printf("TODO: not implemented");
-        longjmp(env, 1);
-    }
-
-    if (!parse_str(".")) {
+    int is_impl = parse_str("!");
+    if (!is_impl && !parse_str(".")) {
         print_loc(pos);
         printf("Failed to parse, lambdas use a '.' after the parameter type to delimit the body\n");
         longjmp(env, 1);
@@ -988,7 +987,7 @@ int parse_lam(void) {
     assert(t.body);
 
     integerize(param, &t.body, &t.param);
-    int id = alloc(-1, curly ? IMPLICIT_LAM : LAM, t);
+    int id = alloc(-1, is_impl ? IMPLICIT_LAM : LAM, t);
     symbols[id] = param;
     locations[id] = p;
 
@@ -1170,7 +1169,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("\x1b[?25l");
+   // printf("\x1b[?25l");
 
     while (1) {
         LARGE_INTEGER freq, begin_time, end_time;
@@ -1189,15 +1188,19 @@ int main(int argc, char **argv) {
         QueryPerformanceFrequency(&freq);
         QueryPerformanceCounter(&begin_time);
 
-        Sleep(20);
+        //Sleep(20);
 
         fflush(stdout);
-        printf("\x1b[H");
-        printf("\x1b[2J");
+       // printf("\x1b[H");
+       // printf("\x1b[2J");
         int value = _setjmp(env); 
         if (value == 0) {
             f = fopen(filename, "r+");
-            if (!f) continue;
+            if (!f) {
+
+        return 0;
+                continue;
+            }
             len = fread(lbuf, 1, sizeof(lbuf), f);
             fclose(f);
 
@@ -1211,12 +1214,14 @@ int main(int argc, char **argv) {
 
             if (!v) {
                 printf("Failed to parse contents\n");
+        return 0;
                 continue;
             }
 
             parse_ws();
             if (input[pos]) {
                 printf("Leftover input\n");
+        return 0;
                 continue;
             }
           
@@ -1224,18 +1229,19 @@ int main(int argc, char **argv) {
             t = term_types[v];
 
             printf("\nFinished typechecking and evaluation.\n");
-
+/*
             printf("\n");
             printf("Resulting term: ");
             print_term(v);
             printf("\nwhich has type: ");
             print_term(t);
-            printf("\n");
+            printf("\n");*/
         }
 
         QueryPerformanceCounter(&end_time);
         elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
         //printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
+        return 0;
     }
 }
 

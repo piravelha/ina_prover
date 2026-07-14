@@ -1,0 +1,204 @@
+
+\Eq : {A: Type} -> A -> A -> Type.
+
+\Eq.refl : {A: Type} -> {x : A} -> Eq x x.
+
+\Eq.ind : {A : Type} -> {x : A} -> (P : {y : A} -> Eq x y -> Type) -> P Eq.refl -> {y : A} -> (h : Eq x y) -> P h.
+
+\Eq.ind_refl : {A : Type} -> {x : A} -> (P : {y : A} -> Eq x y -> Type) -> (h : P Eq.refl) ->
+    Eq (Eq.ind P h Eq.refl) h.
+
+\Bool : Type.
+
+\Bool.true : Bool.
+\Bool.false : Bool.
+
+\Bool.ind : (P : Bool -> Type) -> P Bool.true -> P Bool.false -> (b : Bool) -> P b.
+
+\Bool.ind_true : (P : Bool -> Type) -> (x : P Bool.true) -> (y : P Bool.false) ->
+    Eq (Bool.ind P x y Bool.true) x.
+
+\Bool.ind_false : (P : Bool -> Type) -> (x : P Bool.true) -> (y : P Bool.false) ->
+    Eq (Bool.ind P x y Bool.false) y.
+
+Bool.elim : {C : Type} -> C -> C -> Bool -> C;
+Bool.elim = \C : Type! Bool.ind (\b : Bool. C);
+
+id : {A : Type} -> A -> A;
+id = \A : Type! \x : A. x;
+
+compose : {A : Type} -> {B : Type} -> {C : Type} -> (A -> B) -> (B -> C) -> A -> C;
+compose = \A : Type! \B : Type! \C : Type! \f : A -> B. \g : B -> C. \x : A. g (f x);
+
+const : {A : Type} -> {B : Type} -> A -> B -> A;
+const = \A : Type! \B : Type! \x : A. \y : B. x;
+
+flip : {A : Type} -> {B : Type} -> {C : Type} -> (A -> B -> C) -> B -> A -> C;
+flip = \A : Type! \B : Type! \C : Type! \f : A -> B -> C. \y : B. \x : A. f x y;
+
+\True : Type.
+
+\True.intro : True.
+
+\True.ind : (P : True -> Type) -> P True.intro -> (x : True) -> P x.
+
+\True.ind_intro : (P : True -> Type) -> (h : P True.intro) ->
+    Eq (True.ind P h True.intro) h.
+
+\False : Type.
+
+\False.ind : (P : False -> Type) -> (x : False) -> P x.
+
+Not : Type -> Type;
+Not = \A : Type. A -> False;
+
+\Bool.true_ne_false : Not (Eq Bool.true Bool.false).
+\Bool.false_ne_true : Not (Eq Bool.false Bool.true).
+
+False.elim : {C : Type} -> False -> C;
+False.elim = \C : Type! False.ind (\f : False. C);
+
+absurd : {A : Type} -> {B : Type} -> A -> Not A -> B;
+absurd = \A : Type! \B : Type! \x : A. \y : Not A. False.elim (y x);
+
+id_eq : {A : Type} -> {x : A} -> Eq (id x) x;
+id_eq = \A : Type! \x : A! Eq.refl;
+
+Eq.subst : {A : Type} -> {x : A} -> {y : A} -> Eq x y -> (P : A -> Type) -> P x -> P y;
+Eq.subst = \A : Type! \x : A! \y : A! \e : Eq x y. \P : A -> Type. \h : P x. 
+    Eq.ind (\y : A! \h : Eq x y. P y) h e;
+
+Eq.symm : {A : Type} -> {x : A} -> {y : A} -> Eq x y -> Eq y x;
+Eq.symm = \A : Type! \x : A! \y : A! \h : Eq x y. Eq.subst h (flip Eq x) Eq.refl;
+
+Eq.trans : {A : Type} -> {x : A} -> {y : A} -> {z : A} -> Eq x y -> Eq y z -> Eq x z;
+Eq.trans = \A : Type! \x : A! \y : A! \z : A! \h1 : Eq x y. \h2 : Eq y z. Eq.subst h2 (Eq x) h1;
+
+cast : {A : Type} -> {B : Type} -> Eq A B -> A -> B;
+cast = \A : Type! \B : Type! \h : Eq A B. \x : A. Eq.subst h id x;
+
+congrArg : {A : Type} -> {B : Type} -> {x : A} -> {y : A} -> (f : A -> B) -> Eq x y -> Eq (f x) (f y);
+congrArg = \A : Type! \B : Type! \x : A! \y : A! \f : A -> B. \h : Eq x y. Eq.subst h (\y : A. Eq (f x) (f y)) Eq.refl;
+
+congr : {A : Type} -> {B : Type} -> {f : A -> B} -> {g : A -> B} -> {x : A} -> {y : A} -> Eq f g -> Eq x y -> Eq (f x) (g y);
+congr = \A : Type! \B : Type! \f : A -> B! \g : A -> B! \x : A! \y : A! \h1 : Eq f g. \h2 : Eq x y.
+    Eq.subst h1 (\g : A -> B. Eq (f x) (g y)) (congrArg f h2);
+
+congrFunDepen : {A : Type} -> {B : A -> Type} -> {f : (x : A) -> B x} -> {g : (x : A) -> B x} -> {x : A} -> Eq f g -> Eq (f x) (g x);
+congrFunDepen = \A : Type! \B : A -> Type! \f : (x : A) -> B x! \g : (x : A) -> B x! \x : A! \h : Eq f g.
+    Eq.subst h (\g : (x : A) -> B x. Eq (f x) (g x)) Eq.refl;
+
+congrFun : {A : Type} -> {B : Type} -> {f : A -> B} -> {g : A -> B} -> {x : A} -> Eq f g -> Eq (f x) (g x);
+congrFun = \A : Type! \B : Type! \f : A -> B! \g : A -> B! \x : A! \h : Eq f g.
+    Eq.subst h (\g : A -> B. Eq (f x) (g x)) Eq.refl;
+
+
+\Prod : Type -> Type -> Type.
+
+\Prod.intro : {A : Type} -> {B : Type} -> A -> B -> Prod A B.
+
+\Prod.ind : {A : Type} -> {B : Type} -> (P : Prod A B -> Type) -> 
+    ((x : A) -> (y : B) -> P (Prod.intro x y)) -> (p : Prod A B) -> P p.
+
+Prod.elim : {A : Type} -> {B : Type} -> {C : Type} -> (A -> B -> C) -> Prod A B -> C;
+Prod.elim = \A : Type! \B : Type! \C : Type! Prod.ind (\p : Prod A B. C);
+
+Prod.fst : {A : Type} -> {B : Type} -> Prod A B -> A;
+Prod.fst = \A : Type! \B : Type! Prod.elim (\x : A. \y : B. x);
+
+Prod.snd : {A : Type} -> {B : Type} -> Prod A B -> B;
+Prod.snd = \A : Type! \B : Type! Prod.elim (\x : A. \y : B. y);
+
+And = Prod;
+
+And.intro = Prod.intro;
+
+And.left = Prod.fst;
+And.right = Prod.snd;
+And.elim = Prod.elim;
+
+
+\Or : Type -> Type -> Type.
+
+\Or.intro_left : {A : Type} -> {B : Type} -> A -> Or A B.
+
+\Or.intro_right : {A : Type} -> {B : Type} -> B -> Or A B.
+
+\Or.ind : {A : Type} -> {B : Type} -> (P : Or A B -> Type) ->
+    ((x : A) -> P (Or.intro_left x)) -> ((y : B) -> P (Or.intro_right y)) -> 
+    (o : Or A B) -> P o.
+
+Or.elim : {A : Type} -> {B : Type} -> {C : Type} -> (A -> C) -> (B -> C) -> Or A B -> C;
+Or.elim = \A : Type! \B : Type! \C : Type! Or.ind (\o : Or A B. C);
+
+
+Or.resolve_left : {A : Type} -> {B : Type} -> Or A B -> Not A -> B;
+Or.resolve_left = \A : Type! \B : Type! \h : Or A B. \nh : Not A. Or.elim (\x : A. False.elim (nh x)) id h;
+
+Or.resolve_right : {A : Type} -> {B : Type} -> Or A B -> Not B -> A;
+Or.resolve_right = \A : Type! \B : Type! \h : Or A B. \nh : Not B. Or.elim id (\x : B. False.elim (nh x)) h;
+
+
+
+
+
+Or.neg_resolve_left : {A : Type} -> {B : Type} -> Or (Not A) B -> A -> B;
+Or.neg_resolve_left = \A : Type! \B : Type! \h : Or (Not A) B. \x : A. Or.elim (\nh : Not A. False.elim (nh x)) id h;
+
+
+
+
+
+Or.neg_resolve_right :
+    {A : Type} ->
+    {B : Type} ->
+    Or A (Not B) ->
+    B ->
+    A;
+
+Or.neg_resolve_right =
+    \A: Type!
+    \B: Type!
+    \h: Or A (Not B).
+    \y: B.
+    Or.elim id (\nh: Not B. False.elim (nh y)) h;
+
+
+
+
+\Decidable : Type -> Type.
+\Decidable.isFalse : {p : Type} -> Not p -> Decidable p.
+\Decidable.isTrue : {p : Type} -> p -> Decidable p.
+
+\Decidable.ind : {p : Type} -> (P : Decidable p -> Type) ->
+    ((x : Not p) -> P (Decidable.isFalse x)) ->
+    ((x : p) -> P (Decidable.isTrue x)) ->
+    (d : Decidable p) ->
+    P d.
+
+Decidable.elim = \p : Type! \C : Type! \d: Decidable p. \f: Not p -> C. \g: p -> C.
+    Decidable.ind (\d: Decidable p. C) f g d;
+
+Decidable.decide = \p: Type. \d: Decidable p.
+    Decidable.elim d (\f: Not p. Bool.false) (\g: p. Bool.true);
+
+And.instDecidable : {p: Type} -> {q: Type} -> Decidable p -> Decidable q -> Decidable (And p q);
+And.instDecidable = \p: Type! \q: Type! \dp: Decidable p. \dq: Decidable q.
+    Decidable.elim dp
+        (\nx: Not p. Decidable.isFalse (And.elim (\x: p. \y: q. nx x)))
+        (\x: p. Decidable.elim dq
+            (\ny: Not q. Decidable.isFalse (And.elim (\x: p. \y: q. ny y)))
+            (\y: q. Decidable.isTrue (And.intro x y)));
+
+Or.instDecidable : {p: Type} -> {q: Type} -> Decidable p -> Decidable q -> Decidable (Or p q);
+Or.instDecidable = \p: Type! \q: Type! \dp: Decidable p. \dq: Decidable q.
+    Decidable.elim dp
+        (\nx: Not p. Decidable.elim dq
+            (\ny: Not q. Decidable.isFalse (Or.elim nx ny))
+            (\y: q. Decidable.isTrue (Or.intro_right y)))
+        (\x: p. Decidable.isTrue (Or.intro_left x));
+
+
+
+
+Type
