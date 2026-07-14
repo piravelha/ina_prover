@@ -873,6 +873,21 @@ int parse_let(void) {
 
     int type = 0;
 
+    if (parse_str(":")) {
+        type = parse_term();
+        assert(type);
+
+        if (!parse_str(";")) {
+            print_loc(pos);
+            printf("Failed to parse the end of the let binding's type, expected a ';' as the delimiter\n");
+            longjmp(env, 1);
+        }
+
+        if (!parse_str(param_name)) {
+            return 0;
+        }
+    }
+
     if (!parse_str("=")) {
         return 0;
     }
@@ -1102,14 +1117,13 @@ int main(int argc, char **argv) {
     locations = malloc(sizeof(*locations) * MAX_TERMS);
     symbols = malloc(sizeof(*symbols) * MAX_TERMS);
 
-
     static char outbuf[1024*1024];
-    if (setvbuf(stdout, outbuf, _IOFBF, 1024*1024) != 0) {
+    /*if (setvbuf(stdout, outbuf, _IOFBF, 1024*1024) != 0) {
         return 1;
-    }
+    }*/
     char *filename=argv[1];
         
-    printf("\x1b[?25l");
+    //printf("\x1b[?25l");
 
     int frame = 0;
 
@@ -1121,7 +1135,8 @@ int main(int argc, char **argv) {
     memset(dots, ' ', 20);
     for (int i = 0; i < 4; ++i) dots[i] = '~';
 
-    while (1) {
+#define continue return 1
+    //while (1) {
         LARGE_INTEGER freq, begin_time, end_time;
         double elapsed_time;
         QueryPerformanceFrequency(&freq);
@@ -1135,11 +1150,10 @@ int main(int argc, char **argv) {
         global_bindings.count = 0;
 
         fflush(stdout);
+        //Sleep(100);
 
-        Sleep(0.5);
-
-        printf("\x1b[H");
-        printf("\x1b[2J");
+        //printf("\x1b[H");
+        //printf("\x1b[2J");
 
         int value = _setjmp(env); 
         if (value == 0) {
@@ -1184,6 +1198,6 @@ int main(int argc, char **argv) {
         elapsed_time = (double)(end_time.QuadPart - begin_time.QuadPart) / freq.QuadPart;
 
         // printf("Total time spent: %lf ms\n", elapsed_time * 1000.0);
-    }
+    //}
 }
 
